@@ -60,6 +60,7 @@
     <button id="mode">home</button>
     <button id="mute">Voice on</button>
     <button id="hp" title="Use the headphone button to talk">Headset</button>
+    <button id="voice" title="Tap to try the next voice">Voice</button>
   </span>
 </header>
 <div id="log"></div>
@@ -120,11 +121,29 @@ $("mute").onclick = () => { muted = !muted; showMute(); if (muted) stopSpeaking(
 // ---------- voice out ----------
 let voices = [];
 function loadVoices() { voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; }
-if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
-function pickVoice() {
-  const gb = voices.filter(v => /en[-_]GB/i.test(v.lang));
-  return gb.find(v => /male/i.test(v.name)) || gb[0] || voices.find(v => /^en/i.test(v.lang)) || null;
+if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = () => { loadVoices(); showVoice(); }; }
+function englishVoices() {
+  const rank = (v) => (/en[-_]GB/i.test(v.lang) ? 0 : /en[-_]AU/i.test(v.lang) ? 1 : /^en/i.test(v.lang) ? 2 : 9);
+  return voices.filter(v => rank(v) < 9).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
+function pickVoice() {
+  const list = englishVoices();
+  const wanted = store.get("jarvis-voice");
+  if (wanted) { const hit = list.find(v => v.name === wanted); if (hit) return hit; }
+  return list.find(v => /male/i.test(v.name) && !/female/i.test(v.name)) || list[0] || null;
+}
+function showVoice() {
+  const v = pickVoice();
+  $("voice").textContent = v ? "Voice: " + v.name.replace(/^(Google|Microsoft|Samsung)\s*/i, "").slice(0, 18) : "Voice";
+}
+$("voice").onclick = () => {
+  const list = englishVoices();
+  if (!list.length) { addMsg("note", "No voices on this phone yet. Android: Settings > General > Text-to-speech to install some."); return; }
+  const cur = pickVoice();
+  const next = list[(Math.max(0, list.indexOf(cur)) + 1) % list.length];
+  store.set("jarvis-voice", next.name); showVoice();
+  stopSpeaking(); serverVoice = false; queueSpeech("Good evening, sir. How does this one sound?"); serverVoice = true;
+};
 function forSpeech(t) { return t.replace(/https?:\/\/\S+/g, "the link on screen").replace(/[*_#`>|]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim(); }
 function splitSentences(text, final) {
   const out = []; let rest = text;
@@ -287,6 +306,7 @@ function hello() {
   const h = new Date().getHours();
   addMsg("note", `Good ${h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"}, sir. Tap the orb and speak.`);
 }
+showVoice();
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
 (async () => {
   if (PASS && await tryPass(PASS).catch(() => true)) { $("gate").classList.add("hidden"); hello(); }
