@@ -166,7 +166,7 @@ function stopSpeaking() {
 function queueSpeech(text) { if (muted) return; const s = forSpeech(text); if (!s) return; speechQueue.push(s); if (!speaking) playNext(); }
 async function playNext() {
   const gen = speechGen, say = speechQueue.shift();
-  if (!say) { speaking = false; settle(); return; }
+  if (!say) { speaking = false; settle(); maybeFollowUp(); return; }
   speaking = true; setState("speaking");
   const next = () => { if (gen === speechGen) playNext(); };
   if (serverVoice) {
@@ -195,7 +195,7 @@ async function playNext() {
 async function send(text, channel) {
   text = (text || "").trim();
   if (!text || busy) return;
-  busy = true; stopSpeaking();
+  busy = true; followPending = channel === "voice"; stopSpeaking();
   addMsg("you", text); setState("thinking"); statusEl.textContent = "Thinking…";
   const started = performance.now();
   const bubble = addMsg("jarvis", ""), body = bubble.firstChild;
@@ -228,17 +228,17 @@ async function send(text, channel) {
   } catch (e) {
     if (!shown) bubble.remove();
     addMsg("note", "I can't reach my brain just now, sir. " + (e && e.message && !/^relay|Failed to fetch|NetworkError/i.test(e.message) ? "The relay said: " + e.message : "Check the phone has signal and try again."));
-  } finally { busy = false; if (!speaking) settle(); }
+  } finally { busy = false; if (!speaking) { settle(); maybeFollowUp(); } }
 }
 $("form").onsubmit = (e) => { e.preventDefault(); const t = textEl.value; textEl.value = ""; send(t, "typed"); };
 
 // ---------- voice in: record here, transcribe on the relay ----------
 let micStream = null, recorder = null, chunks = [], recStarted = 0, cancelRec = false;
-async function startListening() {
+async function startListening(opts = {}) {
   if (busy || listening) return;
   stopSpeaking();
   if (!navigator.mediaDevices || !window.MediaRecorder) { addMsg("note", "This browser can't record. Use Chrome, or type."); return; }
-  try { if (!micStream || !micStream.active) micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  try { if (!micStream || !micStream.active) micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
   catch (e) { addMsg("note", "Jarvis needs the microphone. Allow it for this app in Android settings, then try again."); return; }
   const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : (MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "");
   chunks = []; cancelRec = false;
@@ -246,11 +246,58 @@ async function startListening() {
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = finishRecording;
   recorder.start(250); recStarted = performance.now();
-  listening = true; setState("listening"); liveEl.textContent = "Listening… tap again when you're done";
+  listening = true; setState("listening");
+  liveEl.textContent = opts.followUp ? "Go on, sir… (or say nothing)" : "Listening… I'll stop when you do";
   if (navigator.vibrate) navigator.vibrate(30);
+  startVAD(micStream, {
+    noSpeechMs: opts.followUp ? 6000 : 8000,
+    onDone: () => stopListening(),
+    onNoSpeech: () => { cancelRec = true; stopListening(); },
+  });
+}
+
+// ---------- hearing when he's finished (voice activity) ----------
+let audioCtx = null, vadTimer = null, vadSrc = null, followPending = false;
+function startVAD(stream, opts) {
+  stopVAD();
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  } catch (e) { return; }
+  const src = audioCtx.createMediaStreamSource(stream), an = audioCtx.createAnalyser();
+  an.fftSize = 1024; src.connect(an); vadSrc = src;
+  const buf = new Float32Array(an.fftSize), t0 = performance.now();
+  let last = t0, floorSamples = [], floor = null, loudMs = 0, speechAt = null, quietSince = null;
+  vadTimer = setInterval(() => {
+    an.getFloatTimeDomainData(buf);
+    let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length), now = performance.now(), dt = now - last; last = now;
+    if (now - t0 < 300) { floorSamples.push(rms); return; }
+    if (floor === null) floor = Math.max(0.003, floorSamples.reduce((a, b) => a + b, 0) / Math.max(1, floorSamples.length));
+    const startLevel = Math.max(floor * 3, 0.02), stopLevel = Math.max(floor * 2, 0.012);
+    if (!speechAt) {
+      if (rms > startLevel) { loudMs += dt; if (loudMs >= 150) speechAt = now; } else loudMs = Math.max(0, loudMs - dt);
+      if (!speechAt && now - t0 > opts.noSpeechMs) { stopVAD(); opts.onNoSpeech(); }
+    } else {
+      if (rms < stopLevel) { quietSince = quietSince || now; if (now - quietSince >= 1100) { stopVAD(); opts.onDone(); } }
+      else quietSince = null;
+      if (now - t0 > 45000) { stopVAD(); opts.onDone(); }
+    }
+  }, 50);
+}
+function stopVAD() {
+  if (vadTimer) { clearInterval(vadTimer); vadTimer = null; }
+  if (vadSrc) { try { vadSrc.disconnect(); } catch (e) {} vadSrc = null; }
+}
+// After he answers something you said, keep listening for a few seconds so you can just reply.
+function maybeFollowUp() {
+  if (!followPending || busy || speaking || listening) return;
+  followPending = false;
+  setTimeout(() => { if (!busy && !speaking && !listening) startListening({ followUp: true }); }, 300);
 }
 function stopListening() { if (listening && recorder && recorder.state === "recording") recorder.stop(); }
 async function finishRecording() {
+  stopVAD();
   listening = false;
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" }); chunks = [];
   const cancelled = cancelRec; cancelRec = false;
@@ -264,7 +311,11 @@ async function finishRecording() {
     if (text) send(text, "voice"); else { setState("idle"); addMsg("note", "I didn't catch that, sir."); }
   } catch (e) { liveEl.textContent = ""; setState("idle"); addMsg("note", "I couldn't send that to be transcribed. Signal?"); }
 }
-function toggle() { if (listening) stopListening(); else if (state === "speaking") stopSpeaking(); else startListening(); }
+function toggle() {
+  if (listening) stopListening();
+  else if (state === "speaking") { stopSpeaking(); followPending = false; }
+  else startListening();
+}
 $("orb").onclick = toggle;
 
 // ---------- headphone button ----------
@@ -304,7 +355,7 @@ $("hp").onclick = async () => {
 // ---------- start ----------
 function hello() {
   const h = new Date().getHours();
-  addMsg("note", `Good ${h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"}, sir. Tap the orb and speak.`);
+  addMsg("note", `Good ${h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"}, sir. Tap the orb and talk; I'll know when you've finished.`);
 }
 showVoice();
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
