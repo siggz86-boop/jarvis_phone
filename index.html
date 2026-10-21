@@ -3,73 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#07090f">
+<meta name="theme-color" content="#040201">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Jarvis</title>
+<title>Argus</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#07090f; --fg:#e8ecf4; --dim:#7d8799; --you:#1b2436; --jar:#121a2a; --note:#2a2238; --glow:#4fa3ff; }
+  :root { --a:#ff7a1a; --a2:#ffb067; --fg:#f3ece6; --dim:#a3968c; --line:rgba(255,255,255,.1); --edge:rgba(255,140,60,.35); --head:"Michroma", system-ui, sans-serif; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { height:100%; margin:0; background:var(--bg); color:var(--fg); font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior:none; }
-  body { display:flex; flex-direction:column; padding-top:env(safe-area-inset-top); }
-  header { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:13px; color:var(--dim); }
-  header b { color:var(--fg); font-weight:600; letter-spacing:.08em; }
-  header button { background:none; border:1px solid #243049; color:var(--dim); border-radius:999px; padding:4px 10px; font-size:12px; margin-left:6px; }
-  header button.on { color:var(--fg); border-color:var(--glow); }
-  #log { flex:1; overflow-y:auto; padding:6px 14px 12px; display:flex; flex-direction:column; gap:8px; }
-  .msg { max-width:88%; padding:9px 13px; border-radius:16px; white-space:pre-wrap; word-wrap:break-word; }
-  .you { align-self:flex-end; background:var(--you); border-bottom-right-radius:4px; }
-  .jarvis { align-self:flex-start; background:var(--jar); border-bottom-left-radius:4px; }
-  .note { align-self:center; background:var(--note); color:#c9c0dc; font-size:13px; text-align:center; }
-  .meta { display:block; font-size:11px; color:var(--dim); margin-top:4px; }
-  #live { min-height:22px; text-align:center; color:var(--dim); font-size:14px; padding:0 16px; }
-  #status { text-align:center; font-size:13px; color:var(--glow); min-height:18px; }
-  #bottom { padding:10px 16px calc(14px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; align-items:center; gap:10px; }
-  #orb { width:96px; height:96px; border-radius:50%; border:none; background:radial-gradient(circle at 35% 35%, #8cc4ff, #2b6fd6 55%, #0b2a5e); box-shadow:0 0 28px rgba(79,163,255,.35); transition:transform .15s, box-shadow .3s; }
-  #orb:active { transform:scale(.95); }
-  body.listening #orb { box-shadow:0 0 48px rgba(255,90,90,.6); background:radial-gradient(circle at 35% 35%, #ffb3b3, #e04848 55%, #5e0b0b); }
-  body.thinking #orb { animation:pulse 1.2s ease-in-out infinite; }
-  body.speaking #orb { box-shadow:0 0 56px rgba(79,163,255,.7); }
-  @keyframes pulse { 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.06);} }
-  form { display:flex; width:100%; gap:8px; }
-  input[type=text], input[type=password] { flex:1; background:#0e1422; border:1px solid #243049; color:var(--fg); border-radius:12px; padding:10px 12px; font-size:16px; }
-  form button { background:#1b2436; color:var(--fg); border:none; border-radius:12px; padding:0 14px; font-size:15px; }
-  #gate { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px; text-align:center; }
+  html, body { height:100%; margin:0; background:#040201; color:var(--fg); font:16px/1.45 Inter, system-ui, -apple-system, Roboto, sans-serif; overscroll-behavior:none; overflow:hidden; }
+  #scene { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  .ui { position:fixed; inset:0; display:flex; flex-direction:column; padding:calc(10px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom)); pointer-events:none; }
+  .ui > * { pointer-events:auto; }
+  header { display:flex; flex-direction:column; gap:10px; }
+  .brand { font:18px/1 var(--head); letter-spacing:.34em; text-align:center; padding-top:4px; }
+  .chips { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
+  .chips button { background:rgba(8,5,3,.6); border:1px solid var(--line); color:var(--dim); border-radius:999px; padding:5px 11px; font:12px Inter, sans-serif; }
+  .chips button.on { color:var(--fg); border-color:var(--edge); }
+  .chips button.on::before { content:""; display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--a); box-shadow:0 0 6px var(--a); margin-right:6px; vertical-align:1px; }
+  .spacer { flex:1; pointer-events:none; }
+  .talk { text-align:center; text-shadow:0 2px 10px #000, 0 0 2px #000; pointer-events:none; padding:0 4px 12px; }
+  #status { font:10px/1 var(--head); letter-spacing:.45em; color:var(--a2); min-height:12px; margin-bottom:10px; }
+  #live { color:var(--a2); font-style:italic; min-height:20px; font-size:14px; }
+  #youline { color:#c7bcb3; font-size:14px; }
+  #reply { color:#fff; font-size:17px; line-height:1.45; margin-top:4px; max-height:5.9em; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; }
+  #logbtn { pointer-events:auto; background:none; border:0; color:var(--dim); font:11px Inter, sans-serif; letter-spacing:.08em; margin-top:8px; padding:6px 10px; }
+  form { display:flex; gap:8px; align-items:center; height:52px; padding:0 6px 0 16px; border:1px solid rgba(255,255,255,.25); border-radius:14px; background:rgba(8,5,3,.75); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
+  form:focus-within { border-color:var(--a2); }
+  form input { flex:1; min-width:0; background:none; border:0; outline:none; color:var(--fg); font:16px Inter, sans-serif; }
+  form input::placeholder { color:#b7aba2; }
+  #orb { width:42px; height:42px; border-radius:11px; border:0; background:none; color:#eee; display:grid; place-items:center; }
+  [data-state="listening"] #orb { background:var(--a); color:#fff; box-shadow:0 0 18px var(--a); }
+  #send { display:none; }
+  #toast { position:fixed; left:50%; top:calc(96px + env(safe-area-inset-top)); transform:translateX(-50%); width:max-content; max-width:88vw; padding:9px 14px; border-radius:10px; background:rgba(20,10,4,.92); border:1px solid var(--edge); font-size:14px; text-align:center; opacity:0; transition:opacity .3s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  #sheet { position:fixed; left:0; right:0; bottom:0; height:62vh; transform:translateY(105%); transition:transform .25s ease; background:linear-gradient(180deg, rgba(22,13,8,.96), rgba(8,5,3,.98)); border-top:1px solid var(--edge); border-radius:16px 16px 0 0; padding:14px 14px calc(84px + env(safe-area-inset-bottom)); z-index:3; }
+  #sheet.open { transform:none; }
+  #log { height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  .msg { max-width:88%; padding:9px 13px; border-radius:14px; white-space:pre-wrap; word-wrap:break-word; font-size:15px; }
+  .you { align-self:flex-end; background:rgba(255,122,26,.18); border:1px solid rgba(255,122,26,.3); }
+  .jarvis { align-self:flex-start; background:rgba(255,255,255,.05); border:1px solid var(--line); }
+  .note { align-self:center; color:var(--dim); font-size:13px; text-align:center; }
+  .meta { display:block; font-size:11px; color:#6f645c; margin-top:4px; }
+  #bottom { position:relative; z-index:4; }
+  #gate { position:fixed; inset:0; z-index:9; background:radial-gradient(circle at 50% 35%, rgba(255,110,25,.18), #040201 60%); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px; text-align:center; }
   #gate p { color:var(--dim); max-width:320px; }
-  #gate input { width:100%; max-width:320px; }
-  #gate button { width:100%; max-width:320px; background:#2b6fd6; color:#fff; border:none; border-radius:12px; padding:12px; font-size:16px; }
+  #gate input { width:100%; max-width:320px; background:rgba(8,5,3,.8); border:1px solid rgba(255,255,255,.25); color:var(--fg); border-radius:12px; padding:12px; font-size:16px; }
+  #gate button { width:100%; max-width:320px; background:var(--a); color:#fff; border:none; border-radius:12px; padding:12px; font-size:16px; box-shadow:0 0 22px rgba(255,122,26,.4); }
   .hidden { display:none !important; }
 </style>
 </head>
-<body>
+<body data-state="idle">
+<canvas id="scene" aria-hidden="true"></canvas>
 <div id="gate">
-  <div style="font-size:28px;font-weight:600;letter-spacing:.1em">JARVIS</div>
+  <div style="font:26px/1 Michroma, sans-serif;letter-spacing:.3em">ARGUS</div>
   <p>Your passphrase, sir. It's only asked once on this phone.</p>
   <input id="pass" type="password" autocomplete="current-password" placeholder="passphrase">
   <button id="passgo">Let me in</button>
-  <p id="passerr" style="color:#ff8a8a"></p>
+  <p id="passerr" style="color:#ff9a8a"></p>
 </div>
 
-<header>
-  <b>JARVIS</b>
-  <span>
-    <button id="mode">home</button>
-    <button id="mute">Voice on</button>
-    <button id="hp" title="Use the headphone button to talk">Headset</button>
-    <button id="voice" title="Tap to try the next voice">Voice</button>
-  </span>
-</header>
-<div id="log"></div>
-<div id="status"></div>
-<div id="live"></div>
-<div id="bottom">
-  <button id="orb" aria-label="Talk to Jarvis"></button>
-  <form id="form"><input id="text" type="text" placeholder="or type…" autocomplete="off"><button type="submit">Send</button></form>
+<div class="ui">
+  <header>
+    <div class="brand">ARGUS</div>
+    <div class="chips">
+      <button id="mode">home</button>
+      <button id="mute">Voice on</button>
+      <button id="hp" title="Use the headphone button to talk">Headset</button>
+      <button id="voice" title="Tap to try the next phone voice">Phone voice</button>
+    </div>
+  </header>
+  <div class="spacer"></div>
+  <div class="talk">
+    <div id="status"></div>
+    <div id="live"></div>
+    <div id="youline"></div>
+    <div id="reply"></div>
+    <button id="logbtn" type="button">CONVERSATION</button>
+  </div>
+  <div id="bottom">
+    <form id="form" autocomplete="off">
+      <input id="text" type="text" placeholder="Ask me anything…" aria-label="Ask Argus">
+      <button id="orb" type="button" aria-label="Talk to Argus"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </div>
 </div>
+<div id="toast" role="status"></div>
+<div id="sheet"><div id="log"></div></div>
 
 <script>
 const RELAY = location.hostname.endsWith("supabase.co") ? "./" : "https://swwmgxcjzgdukrwsrwnt.supabase.co/functions/v1/phone/";
@@ -97,12 +122,17 @@ $("passgo").onclick = async () => {
 $("pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("passgo").onclick(); });
 
 // ---------- transcript ----------
-function setState(s) { state = s; document.body.className = s; if (s !== "thinking") statusEl.textContent = ""; }
+const LABEL = { idle: "", listening: "LISTENING", thinking: "THINKING", speaking: "SPEAKING" };
+function setState(s) { state = s; document.body.dataset.state = s; if (s !== "thinking") statusEl.textContent = LABEL[s] || ""; else if (!statusEl.textContent || statusEl.textContent === "THINKING") statusEl.textContent = "THINKING"; }
 function addMsg(who, text, meta) {
   const div = document.createElement("div"); div.className = "msg " + who;
   const body = document.createElement("span"); body.textContent = text; div.appendChild(body);
   if (meta) setMeta(div, meta);
-  logEl.appendChild(div); logEl.scrollTop = logEl.scrollHeight; return div;
+  logEl.appendChild(div); logEl.scrollTop = logEl.scrollHeight;
+  if (who === "you") { $("youline").textContent = "“" + text + "”"; $("reply").textContent = ""; }
+  if (who === "jarvis" && text) $("reply").textContent = text;
+  if (who === "note") toast(text);
+  return div;
 }
 function setMeta(div, text) {
   let m = div.querySelector(".meta");
@@ -114,7 +144,7 @@ function setMeta(div, text) {
 function showMode() { $("mode").textContent = mode; $("mode").classList.toggle("on", mode === "office"); }
 showMode();
 $("mode").onclick = () => { mode = mode === "home" ? "office" : "home"; store.set("jarvis-mode", mode); showMode(); };
-function showMute() { $("mute").textContent = muted ? "Voice off" : "Voice on"; }
+function showMute() { $("mute").textContent = muted ? "Voice off" : "Voice on"; $("mute").classList.toggle("on", !muted); }
 showMute();
 $("mute").onclick = () => { muted = !muted; showMute(); if (muted) stopSpeaking(); store.set("jarvis-muted", muted ? "1" : "0"); };
 
@@ -134,7 +164,7 @@ function pickVoice() {
 }
 function showVoice() {
   const v = pickVoice();
-  $("voice").textContent = v ? "Voice: " + v.name.replace(/^(Google|Microsoft|Samsung)\s*/i, "").slice(0, 18) : "Voice";
+  $("voice").textContent = v ? v.name.replace(/^(Google|Microsoft|Samsung)\s*/i, "").slice(0, 14) : "Phone voice";
 }
 $("voice").onclick = () => {
   const list = englishVoices();
@@ -156,6 +186,15 @@ function splitSentences(text, final) {
   return [out, rest];
 }
 let speechQueue = [], speaking = false, speechGen = 0, audioEl = null, serverVoice = true;
+let voiceAnalyser = null, micLevel = 0;   // loudness, for the sphere
+function watchVoice(el) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaElementSource(el);
+    voiceAnalyser = audioCtx.createAnalyser(); voiceAnalyser.fftSize = 512;
+    src.connect(voiceAnalyser); voiceAnalyser.connect(audioCtx.destination);
+  } catch (e) { voiceAnalyser = null; }
+}
 function settle() { setState(busy ? "thinking" : "idle"); }
 function stopSpeaking() {
   speechGen++; speechQueue = []; speaking = false;
@@ -176,7 +215,8 @@ async function playNext() {
       if (r.status === 200) {
         const url = URL.createObjectURL(await r.blob());
         audioEl = new Audio(url);
-        audioEl.onended = () => { URL.revokeObjectURL(url); audioEl = null; next(); };
+        watchVoice(audioEl);
+        audioEl.onended = () => { URL.revokeObjectURL(url); audioEl = null; voiceAnalyser = null; next(); };
         audioEl.onerror = next;
         await audioEl.play(); return;
       }
@@ -191,12 +231,12 @@ async function playNext() {
   speechSynthesis.speak(u);
 }
 
-// ---------- talking to Jarvis ----------
+// ---------- talking to Argus ----------
 async function send(text, channel) {
   text = (text || "").trim();
   if (!text || busy) return;
   busy = true; followPending = channel === "voice"; stopSpeaking();
-  addMsg("you", text); setState("thinking"); statusEl.textContent = "Thinking…";
+  addMsg("you", text); setState("thinking");
   const started = performance.now();
   const bubble = addMsg("jarvis", ""), body = bubble.firstChild;
   let shown = "", pending = "", firstWords = null;
@@ -204,10 +244,10 @@ async function send(text, channel) {
   const handle = (ev) => {
     if (ev.type === "delta") {
       if (firstWords === null) firstWords = (performance.now() - started) / 1000;
-      shown += ev.text; body.textContent = shown; pending += ev.text; take(false); logEl.scrollTop = logEl.scrollHeight;
+      shown += ev.text; body.textContent = shown; $("reply").textContent = shown; pending += ev.text; take(false); logEl.scrollTop = logEl.scrollHeight;
     } else if (ev.type === "status") { if (state === "thinking") statusEl.textContent = ev.text; }
     else if (ev.type === "done") {
-      if (!shown.trim() && ev.reply) { shown = ev.reply; body.textContent = shown; pending = ev.reply; }
+      if (!shown.trim() && ev.reply) { shown = ev.reply; body.textContent = shown; $("reply").textContent = shown; pending = ev.reply; }
       take(true);
       const secs = ((performance.now() - started) / 1000).toFixed(1);
       const first = firstWords !== null ? `first words ${firstWords.toFixed(1)}s · ` : "";
@@ -239,7 +279,7 @@ async function startListening(opts = {}) {
   stopSpeaking();
   if (!navigator.mediaDevices || !window.MediaRecorder) { addMsg("note", "This browser can't record. Use Chrome, or type."); return; }
   try { if (!micStream || !micStream.active) micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-  catch (e) { addMsg("note", "Jarvis needs the microphone. Allow it for this app in Android settings, then try again."); return; }
+  catch (e) { addMsg("note", "Argus needs the microphone. Allow it for this app in Android settings, then try again."); return; }
   const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : (MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "");
   chunks = []; cancelRec = false;
   recorder = new MediaRecorder(micStream, mime ? { mimeType: mime } : undefined);
@@ -247,7 +287,7 @@ async function startListening(opts = {}) {
   recorder.onstop = finishRecording;
   recorder.start(250); recStarted = performance.now();
   listening = true; setState("listening");
-  liveEl.textContent = opts.followUp ? "Go on, sir… (or say nothing)" : "Listening… I'll stop when you do";
+  liveEl.textContent = opts.followUp ? "Go on, sir…" : "";
   if (navigator.vibrate) navigator.vibrate(30);
   startVAD(micStream, {
     noSpeechMs: opts.followUp ? 6000 : 8000,
@@ -272,6 +312,7 @@ function startVAD(stream, opts) {
     an.getFloatTimeDomainData(buf);
     let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
     const rms = Math.sqrt(sum / buf.length), now = performance.now(), dt = now - last; last = now;
+    micLevel = Math.min(1, rms * 9);
     if (now - t0 < 300) { floorSamples.push(rms); return; }
     if (floor === null) floor = Math.max(0.003, floorSamples.reduce((a, b) => a + b, 0) / Math.max(1, floorSamples.length));
     const startLevel = Math.max(floor * 3, 0.02), stopLevel = Math.max(floor * 2, 0.012);
@@ -286,6 +327,7 @@ function startVAD(stream, opts) {
   }, 50);
 }
 function stopVAD() {
+  micLevel = 0;
   if (vadTimer) { clearInterval(vadTimer); vadTimer = null; }
   if (vadSrc) { try { vadSrc.disconnect(); } catch (e) {} vadSrc = null; }
 }
@@ -317,6 +359,9 @@ function toggle() {
   else startListening();
 }
 $("orb").onclick = toggle;
+$("logbtn").onclick = () => { $("sheet").classList.toggle("open"); logEl.scrollTop = logEl.scrollHeight; };
+let toastTimer = null;
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 4500); }
 
 // ---------- headphone button ----------
 // Playing a silent loop lets the headset's play/pause button reach this page
@@ -342,7 +387,7 @@ $("hp").onclick = async () => {
     if (!silent) { silent = new Audio(await makeSilence()); silent.loop = true; silent.volume = 0.01; }
     await silent.play();
     if ("mediaSession" in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: "Jarvis", artist: "Press play/pause to talk" });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: "Argus", artist: "Press play/pause to talk" });
       for (const a of ["play", "pause", "nexttrack", "previoustrack"]) {
         try { navigator.mediaSession.setActionHandler(a, () => { silent.play(); toggle(); }); } catch (e) {}
       }
@@ -355,13 +400,301 @@ $("hp").onclick = async () => {
 // ---------- start ----------
 function hello() {
   const h = new Date().getHours();
-  addMsg("note", `Good ${h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"}, sir. Tap the orb and talk; I'll know when you've finished.`);
+  addMsg("note", `Good ${h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"}, sir. Tap me and talk.`);
 }
 showVoice();
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
 (async () => {
   if (PASS && await tryPass(PASS).catch(() => true)) { $("gate").classList.add("hidden"); hello(); }
   else showGate("");
+})();
+</script>
+<script>
+/* =====================================================================
+   The scene: Jarvis's core. Drawn every frame on a canvas, then a
+   two-layer blur is added on top so bright things bloom like film light.
+   ===================================================================== */
+(() => {
+  const cv = document.getElementById("scene");
+  const g = cv.getContext("2d");
+  const bloom = document.createElement("canvas");
+  const bg = bloom.getContext("2d");
+  const blur1 = document.createElement("canvas"), b2 = blur1.getContext("2d");
+  const blur2 = document.createElement("canvas"), b3 = blur2.getContext("2d");
+  let quality = 1, slow = 0;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const TAU = Math.PI * 2;
+  let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, R = 100;
+  const lowPower = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // A soft glowing dot, drawn once and reused thousands of times.
+  function sprite(size, inner, outer) {
+    const c = document.createElement("canvas"); c.width = c.height = size;
+    const x = c.getContext("2d"), h = size / 2;
+    const gr = x.createRadialGradient(h, h, 0, h, h, h);
+    gr.addColorStop(0, inner); gr.addColorStop(0.25, outer); gr.addColorStop(1, "rgba(0,0,0,0)");
+    x.fillStyle = gr; x.fillRect(0, 0, size, size);
+    return c;
+  }
+  const DOT_HOT = sprite(64, "rgba(255,255,255,1)", "rgba(255,160,70,.85)");
+  const DOT_ORANGE = sprite(64, "rgba(255,200,140,1)", "rgba(255,110,20,.7)");
+  const DOT_WHITE = sprite(64, "rgba(255,255,255,1)", "rgba(255,235,215,.75)");
+
+  // --- the particle sphere ---
+  const PTS = [];
+  for (let i = 0; i < 1300; i++) {
+    const shell = Math.random() < 0.72;
+    const rr = shell ? rnd(0.9, 1.0) : Math.pow(Math.random(), 0.55) * 0.88;
+    const u = rnd(-1, 1), th = rnd(0, TAU), s = Math.sqrt(1 - u * u);
+    PTS.push({ x: s * Math.cos(th) * rr, y: u * rr, z: s * Math.sin(th) * rr, r: rr, hot: rr < 0.4 || Math.random() < 0.12, white: Math.random() < 0.3, size: rnd(0.6, 1.6) });
+  }
+  const NODES = [];
+  for (let i = 0; i < 46; i++) {
+    const u = rnd(-1, 1), th = rnd(0, TAU), s = Math.sqrt(1 - u * u), rr = rnd(0.94, 1.0);
+    NODES.push({ x: s * Math.cos(th) * rr, y: u * rr, z: s * Math.sin(th) * rr, size: rnd(1.6, 3.4), tw: rnd(0, TAU) });
+  }
+  const LINKS = [];
+  for (let i = 0; i < NODES.length; i++) for (let j = i + 1; j < NODES.length; j++) {
+    const a = NODES[i], b = NODES[j], d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+    if (d < 0.55 && Math.random() < 0.7) LINKS.push([a, b]);
+  }
+  // Orbits: tilted rings around the sphere with a bright rider or two.
+  const ORBITS = [];
+  for (let i = 0; i < 7; i++) {
+    const inc = rnd(0.25, 1.35), node = rnd(0, TAU), k = rnd(1.0, 1.32);
+    ORBITS.push({ inc, node, k, speed: rnd(0.15, 0.5) * (Math.random() < 0.5 ? -1 : 1), riders: [rnd(0, TAU), rnd(0, TAU)], alpha: rnd(0.3, 0.6) });
+  }
+  // Light streams flowing in from both sides.
+  const STRANDS = [];
+  for (const side of [-1, 1]) for (let i = 0; i < 12; i++) {
+    STRANDS.push({ side, yOff: rnd(-0.55, 0.75), amp: rnd(0.08, 0.32), freq: rnd(0.8, 2.2), phase: rnd(0, TAU), speed: rnd(0.25, 0.8),
+      white: Math.random() < 0.32, w: rnd(0.6, 2.2), a: rnd(0.35, 0.9) });
+  }
+  const SPARKS = [];
+  for (let i = 0; i < 220; i++) SPARKS.push({ s: STRANDS[(Math.random() * STRANDS.length) | 0], p: Math.random(), v: rnd(0.04, 0.16), size: rnd(0.4, 1.6), jit: rnd(-0.03, 0.03) });
+  const STARS = [];
+  for (let i = 0; i < 260; i++) STARS.push({ x: Math.random(), y: Math.random(), z: rnd(0.15, 1), tw: rnd(0, TAU), white: Math.random() < 0.45 });
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    bloom.width = Math.max(1, Math.round(W / 4)); bloom.height = Math.max(1, Math.round(H / 4));
+    blur1.width = bloom.width; blur1.height = bloom.height;
+    blur2.width = Math.max(1, Math.round(W / 10)); blur2.height = Math.max(1, Math.round(H / 10));
+    cx = W / 2; cy = H * 0.36; R = Math.min(W * 0.33, H * 0.19);
+  }
+  addEventListener("resize", resize); resize();
+
+  function strandPoint(s, p, t) {
+    const x0 = s.side < 0 ? -W * 0.04 : W * 1.04, x1 = cx + s.side * R * 0.35;
+    const x = x0 + (x1 - x0) * p;
+    const env = Math.pow(1 - p, 1.25);
+    const y = cy + R * (s.yOff * env * 1.4 + s.amp * 2.2 * Math.sin(s.freq * p * TAU + s.phase + t * s.speed) * env
+      + 0.25 * Math.sin(p * 9 + t * 0.7 + s.phase) * env * s.amp);
+    return [x, y];
+  }
+
+  // Energy follows what Jarvis is doing.
+  let energy = 0.5, spin = 0, last = performance.now(), time = 0;
+  const target = () => ({ idle: 0.45, listening: 0.75, thinking: 1.0, speaking: 0.8 }[document.body.dataset.state] ?? 0.45);
+
+  function voiceNow() {
+    if (typeof voiceAnalyser !== "undefined" && voiceAnalyser) {
+      const a = new Uint8Array(voiceAnalyser.fftSize); voiceAnalyser.getByteTimeDomainData(a);
+      let s = 0; for (const v of a) { const d = (v - 128) / 128; s += d * d; }
+      return Math.min(1, Math.sqrt(s / a.length) * 5);
+    }
+    return 0;
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const st = document.body.dataset.state;
+    energy += (target() - energy) * Math.min(1, dt * 2.5);
+    time += dt * (lowPower ? 0.25 : 1);
+    spin += dt * (0.09 + energy * 0.22) * (st === "thinking" ? 2.4 : 1) * (lowPower ? 0.3 : 1);
+    let talk = 0;
+    if (st === "speaking") talk = Math.max(voiceNow(), 0.35 + 0.35 * Math.sin(time * 13) * Math.sin(time * 3.1));
+    if (st === "listening") talk = (typeof micLevel !== "undefined" ? micLevel : 0);
+    const pulse = 1 + 0.035 * Math.sin(time * 1.6) + talk * 0.07;
+
+    g.globalCompositeOperation = "source-over";
+    g.globalAlpha = 1;
+    g.fillStyle = "#040201"; g.fillRect(0, 0, W, H);
+
+    // back glow + architecture
+    let gr = g.createRadialGradient(cx, cy, 0, cx, cy, R * 4.2);
+    gr.addColorStop(0, `rgba(255,110,25,${0.16 + energy * 0.08})`); gr.addColorStop(0.4, "rgba(120,40,8,.08)"); gr.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.strokeStyle = "rgba(255,150,80,.07)"; g.lineWidth = 1;
+    for (const k of [1, 1.18]) {
+      const w = R * 2.7 * k, h = R * 2.35 * k, c = R * 0.35 * k;
+      g.beginPath();
+      g.moveTo(cx - w + c, cy - h); g.lineTo(cx + w - c, cy - h); g.lineTo(cx + w, cy - h + c); g.lineTo(cx + w, cy + h * 0.62);
+      g.moveTo(cx - w, cy + h * 0.62); g.lineTo(cx - w, cy - h + c); g.closePath(); g.stroke();
+    }
+
+    g.globalCompositeOperation = "lighter";
+
+    // stars
+    for (const s of STARS) {
+      const x = ((s.x + time * 0.004 * s.z) % 1) * W, y = s.y * H;
+      const a = (0.4 + 0.4 * Math.sin(time * 1.3 + s.tw)) * s.z;
+      g.globalAlpha = Math.max(0, a);
+      const z = 5 * s.z;
+      g.drawImage(s.white ? DOT_WHITE : DOT_ORANGE, x - z / 2, y - z / 2, z, z);
+    }
+
+    // light streams
+    for (const s of STRANDS) {
+      g.beginPath();
+      for (let i = 0; i <= 46; i++) { const [x, y] = strandPoint(s, i / 46, time); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+      const x0 = s.side < 0 ? 0 : W, x1 = cx + s.side * R * 0.35;
+      const lg = g.createLinearGradient(x0, 0, x1, 0);
+      const col = s.white ? "255,236,220" : "255,128,40";
+      lg.addColorStop(0, `rgba(${col},0)`); lg.addColorStop(0.25, `rgba(${col},${s.a * 0.6})`);
+      lg.addColorStop(0.7, `rgba(${col},${s.a})`); lg.addColorStop(1, `rgba(${col},0)`);
+      g.strokeStyle = lg; g.lineWidth = s.w * (0.8 + energy * 0.5); g.stroke();
+    }
+    for (const sp of SPARKS) {
+      sp.p += sp.v * dt * (0.6 + energy); if (sp.p > 1) sp.p -= 1;
+      const [x, y] = strandPoint(sp.s, sp.p, time);
+      const a = Math.sin(Math.PI * sp.p);
+      g.globalAlpha = a * 0.9;
+      const z = sp.size * 6;
+      g.drawImage(sp.s.white ? DOT_HOT : DOT_ORANGE, x - z / 2, y + sp.jit * R - z / 2, z, z);
+    }
+    g.globalAlpha = 1;
+
+    // platform
+    const py = cy + R * 1.5, prx = R * 1.9, pry = R * 0.3;
+    g.globalCompositeOperation = "source-over";
+    gr = g.createRadialGradient(cx, py, 0, cx, py, prx);
+    gr.addColorStop(0, "#1a0c05"); gr.addColorStop(1, "#070302");
+    g.fillStyle = gr;
+    g.beginPath(); g.ellipse(cx, py + pry * 0.35, prx * 1.06, pry * 1.25, 0, 0, TAU); g.fill();
+    g.globalCompositeOperation = "lighter";
+    const rings = [[1.0, 1.4, 0.35], [0.88, 4, 0.95], [0.74, 1.2, 0.5], [0.6, 3, 0.85], [0.44, 1.2, 0.45], [0.28, 2.2, 0.8]];
+    for (const [k, lw, a] of rings) {
+      g.beginPath(); g.ellipse(cx, py, prx * k, pry * k, 0, 0, TAU);
+      g.lineWidth = lw; g.strokeStyle = `rgba(255,${120 + 60 * (1 - k)},40,${a * (0.65 + energy * 0.35)})`; g.stroke();
+    }
+    g.setLineDash([R * 0.08, R * 0.05]); g.lineDashOffset = -time * R * 0.25;
+    g.beginPath(); g.ellipse(cx, py, prx * 0.81, pry * 0.81, 0, 0, TAU);
+    g.lineWidth = 2; g.strokeStyle = "rgba(255,200,150,.55)"; g.stroke();
+    g.setLineDash([]);
+    // side light bars on the platform
+    g.fillStyle = "rgba(255,240,225,.85)";
+    for (const sx of [-1, 1]) { g.fillRect(cx + sx * prx * 0.99 - 1, py + pry * 0.05, 2, pry * 0.3); g.fillRect(cx + sx * prx * 0.55 - (sx > 0 ? prx * 0.16 : 0), py + pry * 0.62, prx * 0.16, 2); }
+    // reflection on the floor
+    gr = g.createRadialGradient(cx, py + pry * 1.6, 0, cx, py + pry * 1.6, prx * 1.3);
+    gr.addColorStop(0, `rgba(255,110,25,${0.18 + energy * 0.1})`); gr.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = gr; g.save(); g.translate(cx, py + pry * 1.6); g.scale(1, 0.22); g.translate(-cx, -(py + pry * 1.6));
+    g.beginPath(); g.arc(cx, py + pry * 1.6, prx * 1.3, 0, TAU); g.fill(); g.restore();
+
+    // beam from the sphere down to the platform
+    gr = g.createLinearGradient(0, cy + R * 0.7, 0, py);
+    gr.addColorStop(0, "rgba(255,200,140,0)"); gr.addColorStop(0.5, "rgba(255,170,90,.7)"); gr.addColorStop(1, "rgba(255,240,220,.95)");
+    g.fillStyle = gr;
+    g.beginPath(); g.moveTo(cx - R * 0.035, cy + R * 0.92); g.lineTo(cx + R * 0.035, cy + R * 0.92); g.lineTo(cx + 1, py); g.lineTo(cx - 1, py); g.closePath(); g.fill();
+    g.globalAlpha = 0.9; g.drawImage(DOT_HOT, cx - R * 0.35, py - R * 0.12, R * 0.7, R * 0.24); g.globalAlpha = 1;
+
+    // sphere
+    const ca = Math.cos(spin), sa = Math.sin(spin), tilt = 0.32, ct = Math.cos(tilt), stt = Math.sin(tilt);
+    const rot = (p) => {
+      const x = p.x * ca + p.z * sa, z = -p.x * sa + p.z * ca;
+      const y = p.y * ct - z * stt, z2 = p.y * stt + z * ct;
+      const f = 3.2 / (3.2 + z2);
+      return [cx + x * R * pulse * f, cy + y * R * pulse * f, z2, f];
+    };
+    gr = g.createRadialGradient(cx, cy, 0, cx, cy, R * 0.5 * pulse);
+    gr.addColorStop(0, `rgba(255,252,245,${0.75 + talk * 0.25})`); gr.addColorStop(0.15, "rgba(255,205,150,.5)");
+    gr.addColorStop(0.5, "rgba(255,100,20,.14)"); gr.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, R * 0.5 * pulse, 0, TAU); g.fill();
+    g.globalAlpha = 0.35 + energy * 0.2; g.strokeStyle = "rgb(255,170,100)"; g.lineWidth = 1;
+    g.beginPath(); g.arc(cx, cy, R * pulse * 1.0, 0, TAU); g.stroke(); g.globalAlpha = 1;
+
+    const step = quality >= 0.95 ? 1 : Math.round(1 / quality);
+    for (let i = 0; i < PTS.length; i += step) {
+      const p = PTS[i];
+      const [x, y, z, f] = rot(p);
+      const depth = 0.25 + 0.75 * (1 - (z + 1) / 2);
+      g.globalAlpha = depth * (p.hot ? 1 : 0.85);
+      const s = p.size * f * (p.hot ? 3.4 : 2.8);
+      g.drawImage(p.hot ? DOT_HOT : p.white ? DOT_WHITE : DOT_ORANGE, x - s / 2, y - s / 2, s, s);
+    }
+    // web between the bright nodes
+    g.lineWidth = 0.7;
+    for (const [a, b] of LINKS) {
+      const A = rot(a), B = rot(b);
+      g.globalAlpha = 0.28 * (0.3 + 0.7 * (1 - (A[2] + 1) / 2));
+      g.strokeStyle = "rgb(255,225,200)";
+      g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke();
+    }
+    for (const n of NODES) {
+      const [x, y, z, f] = rot(n);
+      const depth = 0.3 + 0.7 * (1 - (z + 1) / 2);
+      g.globalAlpha = depth * (0.7 + 0.3 * Math.sin(time * 2 + n.tw));
+      const s = n.size * f * 7;
+      g.drawImage(DOT_HOT, x - s / 2, y - s / 2, s, s);
+    }
+
+    // orbits
+    for (const o of ORBITS) {
+      const ci = Math.cos(o.inc), si = Math.sin(o.inc), cn = Math.cos(o.node + spin * 0.4), sn = Math.sin(o.node + spin * 0.4);
+      const pos = (th) => {
+        let x = Math.cos(th) * o.k, y = 0, z = Math.sin(th) * o.k;
+        const y2 = -z * si, z2 = z * ci; z = z2; y = y2;
+        const x3 = x * cn - y * sn, y3 = x * sn + y * cn;
+        return rot({ x: x3, y: y3, z });
+      };
+      g.globalAlpha = o.alpha * (0.6 + energy * 0.5);
+      g.strokeStyle = "rgb(255,232,212)"; g.lineWidth = 1;
+      g.beginPath();
+      for (let i = 0; i <= 96; i++) { const [x, y] = pos(i / 96 * TAU); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+      g.stroke();
+      for (let r = 0; r < o.riders.length; r++) {
+        o.riders[r] += o.speed * dt * (0.6 + energy * 1.6);
+        const [x, y, z, f] = pos(o.riders[r]);
+        g.globalAlpha = 0.6 + 0.4 * (1 - (z + 1) / 2);
+        const s = 12 * f;
+        g.drawImage(DOT_HOT, x - s / 2, y - s / 2, s, s);
+      }
+    }
+    g.globalAlpha = 1;
+
+    // floor fade
+    g.globalCompositeOperation = "source-over";
+    gr = g.createLinearGradient(0, H * 0.78, 0, H);
+    gr.addColorStop(0, "rgba(4,2,1,0)"); gr.addColorStop(1, "rgba(4,2,1,.9)");
+    g.fillStyle = gr; g.fillRect(0, H * 0.78, W, H * 0.22);
+
+    // bloom: a small, blurred copy of the frame added back on top
+    bg.globalCompositeOperation = "source-over";
+    bg.filter = "none";
+    bg.clearRect(0, 0, bloom.width, bloom.height);
+    bg.drawImage(cv, 0, 0, bloom.width, bloom.height);
+    b2.clearRect(0, 0, blur1.width, blur1.height); b2.filter = "blur(2.5px)"; b2.drawImage(bloom, 0, 0);
+    b3.clearRect(0, 0, blur2.width, blur2.height); b3.filter = "blur(4px)"; b3.drawImage(bloom, 0, 0, blur2.width, blur2.height);
+    g.globalCompositeOperation = "lighter";
+    g.globalAlpha = 0.75; g.drawImage(blur1, 0, 0, W, H);
+    g.globalAlpha = 0.65; g.drawImage(blur2, 0, 0, W, H);
+    g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+
+    // Keep it smooth on slower PCs: thin the particles if frames get slow.
+    slow = slow * 0.95 + (dt > 0.03 ? 1 : 0) * 0.05;
+    if (slow > 0.6 && quality > 0.4) { quality -= 0.1; slow = 0; }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // Tap the sphere to talk.
+  const onSphere = (e) => Math.hypot(e.clientX - cx, e.clientY - cy) < R * 1.05;
+  cv.addEventListener("mousemove", (e) => cv.classList.toggle("hot", onSphere(e)));
+  cv.addEventListener("click", (e) => { if (onSphere(e)) toggle(); });
 })();
 </script>
 </body>
