@@ -10,7 +10,7 @@
 <title>Argus</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Michroma&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root { --a:#ff7a1a; --a2:#ffb067; --fg:#f3ece6; --dim:#a3968c; --line:rgba(255,255,255,.1); --edge:rgba(255,140,60,.35); --head:"Michroma", system-ui, sans-serif; }
@@ -197,30 +197,44 @@ function watchVoice(el) {
 }
 function settle() { setState(busy ? "thinking" : "idle"); }
 function stopSpeaking() {
+  stopBarge();
   speechGen++; speechQueue = []; speaking = false;
   if (window.speechSynthesis) speechSynthesis.cancel();
   if (audioEl) { audioEl.pause(); audioEl = null; }
   if (state === "speaking") settle();
 }
-function queueSpeech(text) { if (muted) return; const s = forSpeech(text); if (!s) return; speechQueue.push(s); if (!speaking) playNext(); }
+// Each sentence's voice is fetched as soon as it's queued, so the next one is ready when this one ends.
+function ttsFetch(item) {
+  if (!item || item.p || !serverVoice) return;
+  item.p = fetch(RELAY + "tts", { method: "POST", headers: hdrs({ "Content-Type": "application/json" }), body: JSON.stringify({ text: item.text }) })
+    .then(async (r) => { if (r.status === 200) return await r.blob(); if (r.status === 204) serverVoice = false; return null; })
+    .catch(() => null);
+}
+function queueSpeech(text) {
+  if (muted) return; const s = forSpeech(text); if (!s) return;
+  const item = { text: s }; speechQueue.push(item);
+  if (speechQueue.length <= 2) ttsFetch(item);
+  if (!speaking) playNext();
+}
 async function playNext() {
-  const gen = speechGen, say = speechQueue.shift();
-  if (!say) { speaking = false; settle(); maybeFollowUp(); return; }
-  speaking = true; setState("speaking");
+  const gen = speechGen, item = speechQueue.shift();
+  if (!item) { speaking = false; stopBarge(); settle(); maybeFollowUp(); return; }
+  const say = item.text;
+  speaking = true; setState("speaking"); startBarge();
   const next = () => { if (gen === speechGen) playNext(); };
-  if (serverVoice) {
+  ttsFetch(item); ttsFetch(speechQueue[0]);
+  if (item.p) {
     try {
-      const r = await fetch(RELAY + "tts", { method: "POST", headers: hdrs({ "Content-Type": "application/json" }), body: JSON.stringify({ text: say }) });
+      const blob = await item.p;
       if (gen !== speechGen) return;
-      if (r.status === 200) {
-        const url = URL.createObjectURL(await r.blob());
+      if (blob) {
+        const url = URL.createObjectURL(blob);
         audioEl = new Audio(url);
         watchVoice(audioEl);
         audioEl.onended = () => { URL.revokeObjectURL(url); audioEl = null; voiceAnalyser = null; next(); };
         audioEl.onerror = next;
         await audioEl.play(); return;
       }
-      if (r.status === 204) serverVoice = false;
     } catch (e) {}
   }
   if (!window.speechSynthesis) { next(); return; }
@@ -232,6 +246,14 @@ async function playNext() {
 }
 
 // ---------- talking to Argus ----------
+// The last few exchanges go with each message so quick replies keep the thread,
+// and anything said by the quick side is passed on to the full Argus.
+let hist = [];
+function sinceAgent() {
+  const out = [];
+  for (let i = hist.length - 1; i >= 0 && hist[i].quick; i--) out.unshift({ role: hist[i].role, text: hist[i].text });
+  return out;
+}
 async function send(text, channel) {
   text = (text || "").trim();
   if (!text || busy) return;
@@ -239,12 +261,15 @@ async function send(text, channel) {
   addMsg("you", text); setState("thinking");
   const started = performance.now();
   const bubble = addMsg("jarvis", ""), body = bubble.firstChild;
-  let shown = "", pending = "", firstWords = null;
+  let shown = "", pending = "", firstWords = null, ack = "", wasQuick = false;
   const take = (final) => { const [s, rest] = splitSentences(pending, final); pending = rest; s.forEach(queueSpeech); };
   const handle = (ev) => {
-    if (ev.type === "delta") {
+    if (ev.type === "ack") {
       if (firstWords === null) firstWords = (performance.now() - started) / 1000;
-      shown += ev.text; body.textContent = shown; $("reply").textContent = shown; pending += ev.text; take(false); logEl.scrollTop = logEl.scrollHeight;
+      ack = ev.text; body.textContent = ack; $("reply").textContent = ack; queueSpeech(ack);
+    } else if (ev.type === "delta") {
+      if (firstWords === null) firstWords = (performance.now() - started) / 1000;
+      shown += ev.text; body.textContent = ack ? ack + "\n\n" + shown.replace(/^\s+/, "") : shown; $("reply").textContent = shown; pending += ev.text; take(false); logEl.scrollTop = logEl.scrollHeight;
     } else if (ev.type === "status") { if (state === "thinking") statusEl.textContent = ev.text; }
     else if (ev.type === "done") {
       if (!shown.trim() && ev.reply) { shown = ev.reply; body.textContent = shown; $("reply").textContent = shown; pending = ev.reply; }
@@ -252,11 +277,12 @@ async function send(text, channel) {
       const secs = ((performance.now() - started) / 1000).toFixed(1);
       const first = firstWords !== null ? `first words ${firstWords.toFixed(1)}s · ` : "";
       const tools = (ev.tools || []).length ? ` · used ${[...new Set(ev.tools)].join(", ")}` : "";
-      setMeta(bubble, `${first}done ${secs}s${tools}`);
+      wasQuick = !!ev.quick;
+      setMeta(bubble, `${first}done ${secs}s${tools}${wasQuick ? " · quick reply" : ""}`);
     }
   };
   try {
-    const r = await fetch(RELAY + "chat", { method: "POST", headers: hdrs({ "Content-Type": "application/json" }), body: JSON.stringify({ text, channel, mode }) });
+    const r = await fetch(RELAY + "chat", { method: "POST", headers: hdrs({ "Content-Type": "application/json" }), body: JSON.stringify({ text, channel, mode, history: hist.slice(-12).map((h) => ({ role: h.role, text: h.text })), since_agent: sinceAgent() }) });
     if (r.status === 401) { bubble.remove(); showGate("Passphrase needed again, sir."); return; }
     if (!r.ok) { let why = ""; try { why = (await r.json()).error || ""; } catch (e) {} throw new Error(why || ("relay " + r.status)); }
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
@@ -268,15 +294,117 @@ async function send(text, channel) {
   } catch (e) {
     if (!shown) bubble.remove();
     addMsg("note", "I can't reach my brain just now, sir. " + (e && e.message && !/^relay|Failed to fetch|NetworkError/i.test(e.message) ? "The relay said: " + e.message : "Check the phone has signal and try again."));
-  } finally { busy = false; if (!speaking) { settle(); maybeFollowUp(); } }
+  } finally {
+    if (shown.trim()) {
+      hist.push({ role: "brad", text, quick: wasQuick }, { role: "argus", text: shown.trim(), quick: wasQuick });
+      if (hist.length > 30) hist = hist.slice(-30);
+    }
+    busy = false; if (!speaking) { settle(); maybeFollowUp(); }
+  }
 }
 $("form").onsubmit = (e) => { e.preventDefault(); const t = textEl.value; textEl.value = ""; send(t, "typed"); };
 
-// ---------- voice in: record here, transcribe on the relay ----------
+// ---------- voice in, live: stream to Deepgram while he talks ----------
 let micStream = null, recorder = null, chunks = [], recStarted = 0, cancelRec = false;
+let live = null, liveOK = true;
+async function getMic() {
+  if (!micStream || !micStream.active) micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  return micStream;
+}
 async function startListening(opts = {}) {
   if (busy || listening) return;
   stopSpeaking();
+  if (liveOK && window.WebSocket && window.MediaRecorder) { startLive(opts); return; }
+  startRecorded(opts);
+}
+async function startLive(opts) {
+  listening = true; setState("listening");
+  liveEl.textContent = opts.followUp ? "Go on, sir…" : "";
+  if (navigator.vibrate) navigator.vibrate(30);
+  let tok = null;
+  try {
+    const r = await fetch(RELAY + "stt-token", { method: "POST", headers: hdrs() });
+    if (r.status === 401) { listening = false; setState("idle"); showGate("Passphrase needed again, sir."); return; }
+    if (r.status === 200) tok = (await r.json()).token;
+  } catch (e) {}
+  const fallback = () => { listening = false; liveOK = false; startRecorded(opts); };
+  if (!tok) { fallback(); return; }
+  try { await getMic(); }
+  catch (e) { listening = false; setState("idle"); addMsg("note", "Argus needs the microphone. Allow it for this app in Android settings, then try again."); return; }
+  const q = new URLSearchParams({ model: "nova-3", language: "en", smart_format: "true", punctuate: "true",
+    interim_results: "true", endpointing: "500", utterance_end_ms: "1000", vad_events: "true" });
+  ["Argus", "SMG", "Holden", "Commodore", "Repco", "Supabase", "Bedford", "Nolathane"].forEach((w) => q.append("keyterm", w));
+  let ws;
+  try { ws = new WebSocket("wss://api.deepgram.com/v1/listen?" + q, ["bearer", tok]); } catch (e) { fallback(); return; }
+  const L = live = { ws, final: "", interim: "", done: false, heard: false, opened: false, rec: null, timers: [] };
+  startVAD(micStream, { meterOnly: true });
+  L.timers.push(setTimeout(() => { if (!L.heard) finishLive(L, true); }, opts.followUp ? 6000 : 8000));
+  L.timers.push(setTimeout(() => finishLive(L, false), 60000));
+  ws.onopen = () => {
+    L.opened = true;
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : (MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "");
+    L.rec = new MediaRecorder(micStream, mime ? { mimeType: mime } : undefined);
+    L.rec.ondataavailable = (e) => { if (e.data.size && ws.readyState === 1) ws.send(e.data); };
+    L.rec.start(100);
+  };
+  ws.onmessage = (m) => {
+    let d; try { d = JSON.parse(m.data); } catch (e) { return; }
+    if (d.type === "Results") {
+      const alt = d.channel && d.channel.alternatives && d.channel.alternatives[0];
+      const t = (alt && alt.transcript) || "";
+      if (t) L.heard = true;
+      if (d.is_final) { if (t) L.final += (L.final ? " " : "") + t; L.interim = ""; } else L.interim = t;
+      liveEl.textContent = (L.final + " " + L.interim).trim();
+      if (d.speech_final && L.final.trim()) finishLive(L, false);
+    } else if (d.type === "UtteranceEnd") { if (L.final.trim()) finishLive(L, false); }
+  };
+  ws.onerror = () => { if (!L.opened && !L.done) { L.done = true; cleanupLive(L); live = null; fallback(); } };
+  ws.onclose = () => { if (!L.done) finishLive(L, false); };
+}
+function cleanupLive(L) {
+  L.timers.forEach(clearTimeout);
+  try { if (L.rec && L.rec.state !== "inactive") L.rec.stop(); } catch (e) {}
+  try { if (L.ws.readyState === 1) L.ws.send(JSON.stringify({ type: "CloseStream" })); L.ws.close(); } catch (e) {}
+  stopVAD();
+}
+function finishLive(L, cancelled) {
+  if (L.done) return;
+  L.done = true; cleanupLive(L);
+  if (live === L) live = null;
+  listening = false;
+  const said = cancelled ? "" : (L.final + " " + L.interim).trim();
+  liveEl.textContent = "";
+  if (!said) { setState("idle"); return; }
+  send(said, "voice");
+}
+
+// ---------- talking over him (headset mode) ----------
+let bargeTimer = null, bargeSrc = null;
+function startBarge() {
+  if (bargeTimer || !hpOn || !micStream || !micStream.active || !audioCtx) return;
+  const src = audioCtx.createMediaStreamSource(micStream), an = audioCtx.createAnalyser();
+  an.fftSize = 1024; src.connect(an); bargeSrc = src;
+  const buf = new Float32Array(an.fftSize), t0 = performance.now();
+  let samples = [], floor = null, loud = 0, last = t0;
+  bargeTimer = setInterval(() => {
+    an.getFloatTimeDomainData(buf);
+    let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length), now = performance.now(), dt = now - last; last = now;
+    if (now - t0 < 500) { samples.push(rms); return; }
+    if (floor === null) floor = Math.max(0.004, samples.reduce((a, b) => a + b, 0) / Math.max(1, samples.length));
+    if (rms > Math.max(floor * 4, 0.045)) {
+      loud += dt;
+      if (loud >= 280) { stopBarge(); stopSpeaking(); followPending = false; startListening(); }
+    } else loud = Math.max(0, loud - dt / 2);
+  }, 40);
+}
+function stopBarge() {
+  if (bargeTimer) { clearInterval(bargeTimer); bargeTimer = null; }
+  if (bargeSrc) { try { bargeSrc.disconnect(); } catch (e) {} bargeSrc = null; }
+}
+
+// ---------- voice in, fallback: record a clip, transcribe on the relay ----------
+async function startRecorded(opts = {}) {
   if (!navigator.mediaDevices || !window.MediaRecorder) { addMsg("note", "This browser can't record. Use Chrome, or type."); return; }
   try { if (!micStream || !micStream.active) micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
   catch (e) { addMsg("note", "Argus needs the microphone. Allow it for this app in Android settings, then try again."); return; }
@@ -313,6 +441,7 @@ function startVAD(stream, opts) {
     let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
     const rms = Math.sqrt(sum / buf.length), now = performance.now(), dt = now - last; last = now;
     micLevel = Math.min(1, rms * 9);
+    if (opts.meterOnly) return;
     if (now - t0 < 300) { floorSamples.push(rms); return; }
     if (floor === null) floor = Math.max(0.003, floorSamples.reduce((a, b) => a + b, 0) / Math.max(1, floorSamples.length));
     const startLevel = Math.max(floor * 3, 0.02), stopLevel = Math.max(floor * 2, 0.012);
@@ -337,7 +466,10 @@ function maybeFollowUp() {
   followPending = false;
   setTimeout(() => { if (!busy && !speaking && !listening) startListening({ followUp: true }); }, 300);
 }
-function stopListening() { if (listening && recorder && recorder.state === "recording") recorder.stop(); }
+function stopListening() {
+  if (live) { finishLive(live, false); return; }
+  if (listening && recorder && recorder.state === "recording") recorder.stop();
+}
 async function finishRecording() {
   stopVAD();
   listening = false;
