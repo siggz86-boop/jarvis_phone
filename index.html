@@ -218,7 +218,7 @@ function queueSpeech(text) {
 }
 async function playNext() {
   const gen = speechGen, item = speechQueue.shift();
-  if (!item) { speaking = false; stopBarge(); settle(); maybeFollowUp(); return; }
+  if (!item) { speaking = false; stopBarge(); settle(); if (!followPending) releaseMic(); maybeFollowUp(); return; }
   const say = item.text;
   speaking = true; setState("speaking"); startBarge();
   const next = () => { if (gen === speechGen) playNext(); };
@@ -306,7 +306,15 @@ $("form").onsubmit = (e) => { e.preventDefault(); const t = textEl.value; textEl
 
 // ---------- voice in, live: stream to Deepgram while he talks ----------
 let micStream = null, recorder = null, chunks = [], recStarted = 0, cancelRec = false;
-let live = null, liveOK = true;
+let live = null, liveOK = true, liveRetryAt = 0;
+// Let go of the microphone when he's finished talking. While an app holds the mic, Android keeps Bluetooth earbuds in
+// phone-call mode (thin sound, sometimes out the earpiece), so Argus's answer should play with the mic released.
+// In headset mode the mic stays open while Argus talks so Brad can talk over him; it's let go once Argus is done.
+function releaseMic() {
+  if (live || listening || (recorder && recorder.state === "recording")) return;
+  if (micStream) { try { micStream.getTracks().forEach((t) => t.stop()); } catch (e) {} }
+  micStream = null;
+}
 async function getMic() {
   if (!micStream || !micStream.active) micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   return micStream;
@@ -314,6 +322,8 @@ async function getMic() {
 async function startListening(opts = {}) {
   if (busy || listening) return;
   stopSpeaking();
+  // After a hiccup getting live listening, try it again a minute later instead of staying on the slower way all day.
+  if (!liveOK && Date.now() > liveRetryAt) liveOK = true;
   if (liveOK && window.WebSocket && window.MediaRecorder) { startLive(opts); return; }
   startRecorded(opts);
 }
@@ -327,7 +337,7 @@ async function startLive(opts) {
     if (r.status === 401) { listening = false; setState("idle"); showGate("Passphrase needed again, sir."); return; }
     if (r.status === 200) tok = (await r.json()).token;
   } catch (e) {}
-  const fallback = () => { listening = false; liveOK = false; startRecorded(opts); };
+  const fallback = () => { listening = false; liveOK = false; liveRetryAt = Date.now() + 60000; startRecorded(opts); };
   if (!tok) { fallback(); return; }
   try { await getMic(); }
   catch (e) { listening = false; setState("idle"); addMsg("note", "Argus needs the microphone. Allow it for this app in Android settings, then try again."); return; }
@@ -373,6 +383,7 @@ function finishLive(L, cancelled) {
   if (live === L) live = null;
   listening = false;
   const said = cancelled ? "" : (L.final + " " + L.interim).trim();
+  if (!hpOn) releaseMic();
   liveEl.textContent = "";
   if (!said) { setState("idle"); return; }
   send(said, "voice");
@@ -473,6 +484,7 @@ function stopListening() {
 async function finishRecording() {
   stopVAD();
   listening = false;
+  if (!hpOn) releaseMic();
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" }); chunks = [];
   const cancelled = cancelRec; cancelRec = false;
   if (cancelled || performance.now() - recStarted < 400 || blob.size < 2000) { liveEl.textContent = ""; setState("idle"); return; }
