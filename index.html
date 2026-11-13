@@ -195,6 +195,20 @@ function watchVoice(el) {
     src.connect(voiceAnalyser); voiceAnalyser.connect(audioCtx.destination);
   } catch (e) { voiceAnalyser = null; }
 }
+async function wakeAudio() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; } }
+  if (audioCtx.state !== "running") {
+    try { await Promise.race([audioCtx.resume(), new Promise((r) => setTimeout(r, 400))]); } catch (e) {}
+  }
+  if (audioCtx.state === "running") {
+    if (!audioCtx._watched) {                      // if it dozes off mid-sentence, wake it straight away
+      audioCtx._watched = true;
+      audioCtx.addEventListener("statechange", () => { if (speaking && audioCtx.state !== "running") audioCtx.resume().catch(() => {}); });
+    }
+    return true;
+  }
+  return false;
+}
 function settle() { setState(busy ? "thinking" : "idle"); }
 function stopSpeaking() {
   stopBarge();
@@ -230,7 +244,11 @@ async function playNext() {
       if (blob) {
         const url = URL.createObjectURL(blob);
         audioEl = new Audio(url);
-        watchVoice(audioEl);
+        // The voice only goes through the sound engine (for the moving sphere) when that engine is awake. Android can put
+        // it to sleep when the mic is let go; a voice routed into a sleeping engine plays in silence. So wake it first,
+        // and if it won't wake, play the voice straight out instead (the sphere just doesn't move).
+        if (await wakeAudio()) watchVoice(audioEl); else voiceAnalyser = null;
+        if (gen !== speechGen) return;
         audioEl.onended = () => { URL.revokeObjectURL(url); audioEl = null; voiceAnalyser = null; next(); };
         audioEl.onerror = next;
         await audioEl.play(); return;
